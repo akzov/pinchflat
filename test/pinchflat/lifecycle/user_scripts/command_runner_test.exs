@@ -6,7 +6,7 @@ defmodule Pinchflat.Lifecycle.UserScripts.CommandRunnerTest do
 
   setup do
     FilesystemUtils.write_p!(filepath(), "")
-    File.chmod(filepath(), 0o755)
+    File.chmod(filepath(), 0o760)
 
     :ok
   end
