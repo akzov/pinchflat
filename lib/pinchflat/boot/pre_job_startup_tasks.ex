@@ -83,7 +83,7 @@ defmodule Pinchflat.Boot.PreJobStartupTasks do
       Logger.info("Creating blank file and making it executable: #{filepath}")
 
       FilesystemUtils.write_p!(filepath, "")
-      File.chmod(filepath, 0o755)
+      File.chmod(filepath, 0o760)
     end
   end
 
