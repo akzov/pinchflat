@@ -78,14 +78,14 @@ defmodule Pinchflat.Boot.PreJobStartupTasksTest do
       assert File.exists?(filepath)
     end
 
-    test "gives it 755 permissions" do
+    test "gives it 760 permissions" do
       base_dir = Application.get_env(:pinchflat, :extras_directory)
       filepath = Path.join([base_dir, "user-scripts", "lifecycle"])
       File.rm(filepath)
 
       PreJobStartupTasks.init(%{})
 
-      assert File.stat!(filepath).mode == 0o100755
+      assert File.stat!(filepath).mode == 0o10077605
     end
   end
 
