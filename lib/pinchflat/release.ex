@@ -74,7 +74,7 @@ defmodule Pinchflat.Release do
     like this on the *host*:
 
       chown nobody -R <host path that maps to #{dir}>
-      chmod 755 -R <host path that maps to #{dir}>
+      chmod 760 -R <host path that maps to #{dir}>
 
     Swapping in your real host path. Then, you should set the user running
     this container by editing your `docker run` command like so:
