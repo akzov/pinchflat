@@ -28,7 +28,7 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
   """
   def kickoff_indexing_task(%Source{} = source, job_args \\ %{}, job_opts \\ []) do
     Tasks.delete_pending_tasks_for(source, "FastIndexingWorker")
-    Tasks.delete_pending_tasks_for(source, "MediaCollectionIndexingWorker")
+    Tasks.delete_pending_tasks_for(source, "MediaCollectionIndexingWorker", include_executing: true)
 
     MediaCollectionIndexingWorker.kickoff_with_task(source, job_args, job_opts)
   end
@@ -94,7 +94,8 @@ defmodule Pinchflat.SlowIndexing.SlowIndexingHelpers do
     {:ok, pid} = FileFollowerServer.start_link()
 
     handler = fn filepath -> setup_file_follower_watcher(pid, filepath, source) end
-    result = MediaCollection.get_media_attributes_for_collection(source.original_url, file_listener_handler: handler)
+    runner_opts = [file_listener_handler: handler, use_cookies: source.use_cookies]
+    result = MediaCollection.get_media_attributes_for_collection(source.original_url, runner_opts)
 
     FileFollowerServer.stop(pid)
 

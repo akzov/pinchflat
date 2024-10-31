@@ -74,6 +74,9 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
         {{:download_auto_subs, true}, %{download_subs: true}} ->
           acc ++ [:write_auto_subs]
 
+        {{:download_auto_subs, true}, %{embed_subs: true}} ->
+          acc ++ [:write_auto_subs]
+
         {{:embed_subs, true}, %{preferred_resolution: pr}} when pr != :audio ->
           acc ++ [:embed_subs]
 
@@ -124,11 +127,12 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
   defp quality_options(media_profile) do
     vcodec = Settings.get!(:video_codec_preference)
     acodec = Settings.get!(:audio_codec_preference)
+    container = media_profile.media_container
 
     case media_profile.preferred_resolution do
       # Also be aware that :audio disabled all embedding options for subtitles
       :audio ->
-        [:extract_audio, format_sort: "+acodec:#{acodec}"]
+        [:extract_audio, format_sort: "+acodec:#{acodec}", audio_format: container || "best"]
 
       resolution_atom ->
         {resolution_string, _} =
@@ -138,7 +142,7 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
 
         [
           # Since Plex doesn't support reading metadata from MKV
-          remux_video: "mp4",
+          remux_video: container || "mp4",
           format_sort: "res:#{resolution_string},+codec:#{vcodec}:#{acodec}"
         ]
     end
@@ -203,10 +207,8 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
       "source_collection_id" => source.collection_id,
       "source_collection_name" => source.collection_name,
       "source_collection_type" => to_string(source.collection_type),
-      "media_upload_date_index" =>
-        media_item_with_preloads.upload_date_index
-        |> to_string()
-        |> String.pad_leading(2, "0")
+      "media_playlist_index" => pad_int(media_item_with_preloads.playlist_index),
+      "media_upload_date_index" => pad_int(media_item_with_preloads.upload_date_index)
     }
   end
 
@@ -221,6 +223,12 @@ defmodule Pinchflat.Downloading.DownloadOptionBuilder do
     |> List.insert_at(-3, "-thumb")
     |> Enum.join()
     |> build_output_path(media_item_with_preloads)
+  end
+
+  defp pad_int(integer, count \\ 2, padding \\ "0") do
+    integer
+    |> to_string()
+    |> String.pad_leading(count, padding)
   end
 
   defp base_directory do

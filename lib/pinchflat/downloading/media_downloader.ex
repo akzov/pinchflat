@@ -79,6 +79,7 @@ defmodule Pinchflat.Downloading.MediaDownloader do
       |> MetadataParser.parse_for_media_item()
       |> Map.merge(%{
         media_downloaded_at: DateTime.utc_now(),
+        culled_at: nil,
         nfo_filepath: determine_nfo_filepath(media_with_preloads, parsed_json),
         metadata: %{
           # IDEA: might be worth kicking off a job for this since thumbnail fetching
@@ -105,8 +106,9 @@ defmodule Pinchflat.Downloading.MediaDownloader do
 
   defp download_with_options(url, item_with_preloads, output_filepath, override_opts) do
     {:ok, options} = DownloadOptionBuilder.build(item_with_preloads, override_opts)
+    runner_opts = [output_filepath: output_filepath, use_cookies: item_with_preloads.source.use_cookies]
 
-    YtDlpMedia.download(url, options, output_filepath: output_filepath)
+    YtDlpMedia.download(url, options, runner_opts)
   end
 
   defp recoverable_errors do

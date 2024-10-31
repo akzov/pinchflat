@@ -25,15 +25,17 @@ defmodule Pinchflat.YtDlp.MediaCollection do
     # the first video has not released yet (ie: is a premier). We don't care about
     # available formats since we're just getting the media details
     command_opts = [:simulate, :skip_download, :ignore_no_formats_error, :no_warnings]
+    use_cookies = Keyword.get(addl_opts, :use_cookies, false)
     output_template = YtDlpMedia.indexing_output_template()
     output_filepath = FilesystemUtils.generate_metadata_tmpfile(:json)
     file_listener_handler = Keyword.get(addl_opts, :file_listener_handler, false)
+    runner_opts = [output_filepath: output_filepath, use_cookies: use_cookies]
 
     if file_listener_handler do
       file_listener_handler.(output_filepath)
     end
 
-    case runner.run(url, command_opts, output_template, output_filepath: output_filepath) do
+    case runner.run(url, command_opts, output_template, runner_opts) do
       {:ok, output} ->
         parsed_lines =
           output
@@ -64,7 +66,7 @@ defmodule Pinchflat.YtDlp.MediaCollection do
 
   Returns {:ok, map()} | {:error, any, ...}.
   """
-  def get_source_details(source_url, addl_opts \\ []) do
+  def get_source_details(source_url, command_opts \\ [], addl_opts \\ []) do
     # `ignore_no_formats_error` is necessary because yt-dlp will error out if
     # the first video has not released yet (ie: is a premier). We don't care about
     # available formats since we're just getting the source details
@@ -75,13 +77,14 @@ defmodule Pinchflat.YtDlp.MediaCollection do
       playlist_end: 1
     ]
 
-    command_opts = default_opts ++ addl_opts
+    all_command_opts = default_opts ++ command_opts
     output_template = "%(.{channel,channel_id,playlist_id,playlist_title,filename})j"
 
-    with {:ok, output} <- backend_runner().run(source_url, command_opts, output_template),
+    with {:ok, output} <- backend_runner().run(source_url, all_command_opts, output_template, addl_opts),
          {:ok, parsed_json} <- Phoenix.json_library().decode(output) do
       {:ok, format_source_details(parsed_json)}
     else
+      {:error, %Jason.DecodeError{}} -> {:error, "Error decoding JSON response"}
       err -> err
     end
   end
@@ -99,13 +102,24 @@ defmodule Pinchflat.YtDlp.MediaCollection do
   as a compressed blob for possible future use. That's why it's not getting formatted like
   `get_source_details/1`
 
+  ! IMPORTANT ! - you'll always want to set `playlist_items: int` in `addl_opts.
+  This is great if you want to also return details about the videos in the playlists,
+  but it should be set in all cases to not over-fetch data.
+  For channels you should usually set this to 0 since channels return all the
+  metadata we need without needing to fetch the videos. On the other hand, playlists
+  don't return very useful images so you can set this to 1 to get the first video's
+  images, for instance.
+
   Returns {:ok, map()} | {:error, any, ...}.
   """
-  def get_source_metadata(source_url, addl_opts \\ []) do
-    opts = [playlist_items: 0] ++ addl_opts
+  def get_source_metadata(source_url, command_opts, addl_opts \\ []) do
+    # This only validates that the `playlist_items` key is present. It's otherwise unused
+    _playlist_items = Keyword.fetch!(command_opts, :playlist_items)
+
+    all_command_opts = [:skip_download] ++ command_opts
     output_template = "playlist:%()j"
 
-    with {:ok, output} <- backend_runner().run(source_url, opts, output_template),
+    with {:ok, output} <- backend_runner().run(source_url, all_command_opts, output_template, addl_opts),
          {:ok, parsed_json} <- Phoenix.json_library().decode(output) do
       {:ok, parsed_json}
     else

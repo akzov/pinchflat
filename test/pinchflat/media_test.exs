@@ -41,99 +41,7 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
-  describe "list_cullable_media_items/0" do
-    test "returns media items where the source has a retention period" do
-      source_one = source_fixture(%{retention_period_days: 2})
-      source_two = source_fixture(%{retention_period_days: 0})
-      source_three = source_fixture(%{retention_period_days: nil})
-
-      _media_item =
-        media_item_fixture(%{
-          source_id: source_two.id,
-          media_filepath: "/video/#{Faker.File.file_name(:video)}",
-          media_downloaded_at: now_minus(3, :days)
-        })
-
-      _media_item =
-        media_item_fixture(%{
-          source_id: source_three.id,
-          media_filepath: "/video/#{Faker.File.file_name(:video)}",
-          media_downloaded_at: now_minus(3, :days)
-        })
-
-      expected_media_item =
-        media_item_fixture(%{
-          source_id: source_one.id,
-          media_filepath: "/video/#{Faker.File.file_name(:video)}",
-          media_downloaded_at: now_minus(3, :days)
-        })
-
-      assert Media.list_cullable_media_items() == [expected_media_item]
-    end
-
-    test "returns media_items with a media_filepath" do
-      source = source_fixture(%{retention_period_days: 2})
-
-      _media_item =
-        media_item_fixture(%{
-          source_id: source.id,
-          media_filepath: nil,
-          media_downloaded_at: now_minus(3, :days)
-        })
-
-      expected_media_item =
-        media_item_fixture(%{
-          source_id: source.id,
-          media_filepath: "/video/#{Faker.File.file_name(:video)}",
-          media_downloaded_at: now_minus(3, :days)
-        })
-
-      assert Media.list_cullable_media_items() == [expected_media_item]
-    end
-
-    test "returns items that have passed their retention period" do
-      source = source_fixture(%{retention_period_days: 2})
-
-      _media_item =
-        media_item_fixture(%{
-          source_id: source.id,
-          media_filepath: "/video/#{Faker.File.file_name(:video)}",
-          media_downloaded_at: now_minus(2, :days)
-        })
-
-      expected_media_item =
-        media_item_fixture(%{
-          source_id: source.id,
-          media_filepath: "/video/#{Faker.File.file_name(:video)}",
-          media_downloaded_at: now_minus(3, :days)
-        })
-
-      assert Media.list_cullable_media_items() == [expected_media_item]
-    end
-
-    test "doesn't return items that are set to prevent culling" do
-      source = source_fixture(%{retention_period_days: 2})
-
-      _media_item =
-        media_item_fixture(%{
-          source_id: source.id,
-          media_filepath: "/video/#{Faker.File.file_name(:video)}",
-          media_downloaded_at: now_minus(3, :days),
-          prevent_culling: true
-        })
-
-      expected_media_item =
-        media_item_fixture(%{
-          source_id: source.id,
-          media_filepath: "/video/#{Faker.File.file_name(:video)}",
-          media_downloaded_at: now_minus(3, :days)
-        })
-
-      assert Media.list_cullable_media_items() == [expected_media_item]
-    end
-  end
-
-  describe "list_redownloadable_media_items/0" do
+  describe "list_upgradeable_media_items/0" do
     setup do
       media_profile = media_profile_fixture(%{redownload_delay_days: 4})
       source = source_fixture(%{media_profile_id: media_profile.id, inserted_at: now_minus(10, :days)})
@@ -149,7 +57,7 @@ defmodule Pinchflat.MediaTest do
           media_downloaded_at: now_minus(5, :days)
         })
 
-      assert Media.list_redownloadable_media_items() == [media_item]
+      assert Media.list_upgradeable_media_items() == [media_item]
     end
 
     test "returns media items that were downloaded in past but still meet redownload delay", %{source: source} do
@@ -160,7 +68,7 @@ defmodule Pinchflat.MediaTest do
           media_downloaded_at: now_minus(19, :days)
         })
 
-      assert Media.list_redownloadable_media_items() == [media_item]
+      assert Media.list_upgradeable_media_items() == [media_item]
     end
 
     test "does not return media items without a media_downloaded_at", %{source: source} do
@@ -171,7 +79,7 @@ defmodule Pinchflat.MediaTest do
           media_downloaded_at: nil
         })
 
-      assert Media.list_redownloadable_media_items() == []
+      assert Media.list_upgradeable_media_items() == []
     end
 
     test "does not return media items that are set to prevent download", %{source: source} do
@@ -183,7 +91,7 @@ defmodule Pinchflat.MediaTest do
           prevent_download: true
         })
 
-      assert Media.list_redownloadable_media_items() == []
+      assert Media.list_upgradeable_media_items() == []
     end
 
     test "does not return media items that have been culled", %{source: source} do
@@ -195,7 +103,7 @@ defmodule Pinchflat.MediaTest do
           culled_at: now()
         })
 
-      assert Media.list_redownloadable_media_items() == []
+      assert Media.list_upgradeable_media_items() == []
     end
 
     test "does not return media items before the download delay", %{source: source} do
@@ -206,7 +114,7 @@ defmodule Pinchflat.MediaTest do
           media_downloaded_at: now_minus(3, :days)
         })
 
-      assert Media.list_redownloadable_media_items() == []
+      assert Media.list_upgradeable_media_items() == []
     end
 
     test "does not return media items that have already been redownloaded", %{source: source} do
@@ -218,7 +126,7 @@ defmodule Pinchflat.MediaTest do
           media_redownloaded_at: now()
         })
 
-      assert Media.list_redownloadable_media_items() == []
+      assert Media.list_upgradeable_media_items() == []
     end
 
     test "does not return media items that were first downloaded well after the uploaded_at", %{source: source} do
@@ -229,7 +137,7 @@ defmodule Pinchflat.MediaTest do
           uploaded_at: now_minus(20, :days)
         })
 
-      assert Media.list_redownloadable_media_items() == []
+      assert Media.list_upgradeable_media_items() == []
     end
 
     test "does not return media items that were recently uploaded", %{source: source} do
@@ -240,7 +148,7 @@ defmodule Pinchflat.MediaTest do
           uploaded_at: now_minus(2, :days)
         })
 
-      assert Media.list_redownloadable_media_items() == []
+      assert Media.list_upgradeable_media_items() == []
     end
 
     test "does not return media items without a redownload delay" do
@@ -254,7 +162,7 @@ defmodule Pinchflat.MediaTest do
           media_downloaded_at: now_minus(5, :days)
         })
 
-      assert Media.list_redownloadable_media_items() == []
+      assert Media.list_upgradeable_media_items() == []
     end
   end
 
@@ -447,6 +355,48 @@ defmodule Pinchflat.MediaTest do
     end
   end
 
+  describe "list_pending_media_items_for/1 when min and max durations" do
+    test "returns media items that meet the min and max duration" do
+      source = source_fixture(%{min_duration_seconds: 10, max_duration_seconds: 20})
+
+      _short_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 5})
+      normal_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 15})
+      _long_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 25})
+
+      assert Media.list_pending_media_items_for(source) == [normal_media_item]
+    end
+
+    test "does not apply a min duration if none is specified" do
+      source = source_fixture(%{min_duration_seconds: nil, max_duration_seconds: 20})
+
+      short_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 5})
+      normal_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 15})
+      _long_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 25})
+
+      assert Media.list_pending_media_items_for(source) == [short_media_item, normal_media_item]
+    end
+
+    test "does not apply a max duration if none is specified" do
+      source = source_fixture(%{min_duration_seconds: 10, max_duration_seconds: nil})
+
+      _short_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 5})
+      normal_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 15})
+      long_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 25})
+
+      assert Media.list_pending_media_items_for(source) == [normal_media_item, long_media_item]
+    end
+
+    test "does not apply a min or max duration if none are specified" do
+      source = source_fixture(%{min_duration_seconds: nil, max_duration_seconds: nil})
+
+      short_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 5})
+      normal_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 15})
+      long_media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 25})
+
+      assert Media.list_pending_media_items_for(source) == [short_media_item, normal_media_item, long_media_item]
+    end
+  end
+
   describe "list_pending_media_items_for/1 when testing download prevention" do
     test "returns only media items that are not prevented from downloading" do
       source = source_fixture()
@@ -491,6 +441,13 @@ defmodule Pinchflat.MediaTest do
       assert Media.pending_download?(media_item)
     end
 
+    test "returns true if the cutoff date is equal to the upload date" do
+      source = source_fixture(%{download_cutoff_date: now_minus(2, :days)})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now_minus(2, :days)})
+
+      assert Media.pending_download?(media_item)
+    end
+
     test "returns false if there is a cutoff date after the media's upload date" do
       source = source_fixture(%{download_cutoff_date: now_minus(1, :day)})
       media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, uploaded_at: now_minus(2, :days)})
@@ -522,6 +479,34 @@ defmodule Pinchflat.MediaTest do
     test "return true if there is no title regex" do
       source = source_fixture(%{title_filter_regex: nil})
       media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, title: "foo"})
+
+      assert Media.pending_download?(media_item)
+    end
+
+    test "returns true if the duration is between the min and max" do
+      source = source_fixture(%{min_duration_seconds: 10, max_duration_seconds: 20})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 15})
+
+      assert Media.pending_download?(media_item)
+    end
+
+    test "returns false if the duration is below the min" do
+      source = source_fixture(%{min_duration_seconds: 10, max_duration_seconds: 20})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 5})
+
+      refute Media.pending_download?(media_item)
+    end
+
+    test "returns false if the duration is above the max" do
+      source = source_fixture(%{min_duration_seconds: 10, max_duration_seconds: 20})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 25})
+
+      refute Media.pending_download?(media_item)
+    end
+
+    test "returns true if there is no min or max duration" do
+      source = source_fixture(%{min_duration_seconds: nil, max_duration_seconds: nil})
+      media_item = media_item_fixture(%{source_id: source.id, media_filepath: nil, duration_seconds: 15})
 
       assert Media.pending_download?(media_item)
     end
@@ -689,7 +674,24 @@ defmodule Pinchflat.MediaTest do
       assert {:ok, %MediaItem{} = media_item_2} = Media.create_media_item_from_backend_attrs(source, different_attrs)
 
       assert media_item_1.id == media_item_2.id
-      assert media_item_2.title == different_attrs.title
+      assert Repo.reload(media_item_2).title == different_attrs.title
+    end
+
+    test "doesn't update fields like playlist_index" do
+      source = source_fixture()
+
+      media_attrs =
+        media_attributes_return_fixture()
+        |> Phoenix.json_library().decode!()
+        |> Map.put("playlist_index", 1)
+        |> YtDlpMedia.response_to_struct()
+
+      different_attrs = %YtDlpMedia{media_attrs | playlist_index: 9999}
+
+      assert {:ok, %MediaItem{} = _media_item_1} = Media.create_media_item_from_backend_attrs(source, media_attrs)
+      assert {:ok, %MediaItem{} = media_item_2} = Media.create_media_item_from_backend_attrs(source, different_attrs)
+
+      assert Repo.reload(media_item_2).playlist_index == media_attrs.playlist_index
     end
   end
 
@@ -708,6 +710,21 @@ defmodule Pinchflat.MediaTest do
       assert media_item.title == update_attrs.title
       assert media_item.media_id == update_attrs.media_id
       assert media_item.media_filepath == update_attrs.media_filepath
+    end
+
+    test "updating strips playlist_index from the provided attrs" do
+      media_item = media_item_fixture(playlist_index: 5)
+
+      update_attrs = %{
+        media_id: Faker.String.base64(12),
+        title: Faker.Commerce.product_name(),
+        media_filepath: "/video/#{Faker.File.file_name(:video)}",
+        source_id: source_fixture().id,
+        playlist_index: 1
+      }
+
+      assert {:ok, %MediaItem{} = media_item} = Media.update_media_item(media_item, update_attrs)
+      assert media_item.playlist_index == 5
     end
 
     test "updating with invalid data returns error changeset" do
@@ -740,8 +757,8 @@ defmodule Pinchflat.MediaTest do
     end
 
     test "does delete the media item's metadata files" do
-      stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot -> {:ok, ""} end)
-      media_item = Repo.preload(media_item_with_attachments(), :metadata)
+      stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
+      media_item = Repo.preload(media_item_with_attachments(), [:metadata, :source])
 
       update_attrs = %{
         metadata: %{
@@ -759,7 +776,7 @@ defmodule Pinchflat.MediaTest do
 
   describe "delete_media_item/2 when testing file deletion" do
     setup do
-      stub(UserScriptRunnerMock, :run, fn _event_type, _data -> :ok end)
+      stub(UserScriptRunnerMock, :run, fn _event_type, _data -> {:ok, "", 0} end)
 
       :ok
     end
@@ -772,8 +789,8 @@ defmodule Pinchflat.MediaTest do
     end
 
     test "deletes the media item's metadata files" do
-      stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot -> {:ok, ""} end)
-      media_item = Repo.preload(media_item_with_attachments(), :metadata)
+      stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
+      media_item = Repo.preload(media_item_with_attachments(), [:metadata, :source])
 
       update_attrs = %{
         metadata: %{
@@ -820,7 +837,7 @@ defmodule Pinchflat.MediaTest do
       expect(UserScriptRunnerMock, :run, fn :media_deleted, data ->
         assert data.id == media_item.id
 
-        :ok
+        {:ok, "", 0}
       end)
 
       assert {:ok, _} = Media.delete_media_item(media_item, delete_files: true)
@@ -829,7 +846,7 @@ defmodule Pinchflat.MediaTest do
 
   describe "delete_media_files/2" do
     setup do
-      stub(UserScriptRunnerMock, :run, fn _event_type, _data -> :ok end)
+      stub(UserScriptRunnerMock, :run, fn _event_type, _data -> {:ok, "", 0} end)
 
       :ok
     end
@@ -858,8 +875,8 @@ defmodule Pinchflat.MediaTest do
     end
 
     test "does not delete the media item's metadata files" do
-      stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot -> {:ok, ""} end)
-      media_item = Repo.preload(media_item_with_attachments(), :metadata)
+      stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
+      media_item = Repo.preload(media_item_with_attachments(), [:metadata, :source])
 
       update_attrs = %{
         metadata: %{
@@ -892,7 +909,7 @@ defmodule Pinchflat.MediaTest do
       expect(UserScriptRunnerMock, :run, fn :media_deleted, data ->
         assert data.id == media_item.id
 
-        :ok
+        {:ok, "", 0}
       end)
 
       assert {:ok, _} = Media.delete_media_files(media_item)

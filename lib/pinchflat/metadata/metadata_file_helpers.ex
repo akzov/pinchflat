@@ -62,11 +62,13 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
 
   Returns binary() | nil
   """
-  def download_and_store_thumbnail_for(database_record) do
-    yt_dlp_filepath = generate_filepath_for(database_record, "thumbnail.%(ext)s")
-    real_filepath = generate_filepath_for(database_record, "thumbnail.jpg")
+  def download_and_store_thumbnail_for(media_item_with_preloads) do
+    yt_dlp_filepath = generate_filepath_for(media_item_with_preloads, "thumbnail.%(ext)s")
+    real_filepath = generate_filepath_for(media_item_with_preloads, "thumbnail.jpg")
+    command_opts = [output: yt_dlp_filepath]
+    addl_opts = [use_cookies: media_item_with_preloads.source.use_cookies]
 
-    case YtDlpMedia.download_thumbnail(database_record.original_url, output: yt_dlp_filepath) do
+    case YtDlpMedia.download_thumbnail(media_item_with_preloads.original_url, command_opts, addl_opts) do
       {:ok, _} -> real_filepath
       _ -> nil
     end
@@ -121,6 +123,21 @@ defmodule Pinchflat.Metadata.MetadataFileHelpers do
       {:ok, Path.join(series_directory)}
     else
       {:error, :indeterminable}
+    end
+  end
+
+  @doc """
+  Attempts to determine the season and episode number from a media filepath.
+
+  Returns {:ok, {binary(), binary()}} | {:error, :indeterminable}
+  """
+  def season_and_episode_from_media_filepath(media_filepath) do
+    # matches s + 1 or more digits + e + 1 or more digits (case-insensitive)
+    season_episode_regex = ~r/s(\d+)e(\d+)/i
+
+    case Regex.scan(season_episode_regex, media_filepath) do
+      [[_, season, episode] | _] -> {:ok, {season, episode}}
+      _ -> {:error, :indeterminable}
     end
   end
 

@@ -9,8 +9,8 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
   alias Pinchflat.Downloading.MediaDownloadWorker
 
   setup do
-    stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot -> {:ok, ""} end)
-    stub(UserScriptRunnerMock, :run, fn _event_type, _data -> :ok end)
+    stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
+    stub(UserScriptRunnerMock, :run, fn _event_type, _data -> {:ok, "", 0} end)
     stub(HTTPClientMock, :get, fn _url, _headers, _opts -> {:ok, ""} end)
 
     media_item =
@@ -53,9 +53,11 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
 
   describe "perform/1" do
     test "it saves attributes to the media_item", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl ->
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl ->
         {:ok, render_metadata(:media_metadata)}
       end)
+
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
 
       assert media_item.media_filepath == nil
       perform_job(MediaDownloadWorker, %{id: media_item.id})
@@ -65,9 +67,11 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
 
     test "it saves the metadata to the media_item", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl ->
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl ->
         {:ok, render_metadata(:media_metadata)}
       end)
+
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
 
       assert media_item.metadata == nil
       perform_job(MediaDownloadWorker, %{id: media_item.id})
@@ -138,12 +142,14 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
 
     test "it saves the file's size to the database", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl ->
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl ->
         metadata = render_parsed_metadata(:media_metadata)
         FilesystemUtils.write_p!(metadata["filepath"], "test")
 
         {:ok, Phoenix.json_library().encode!(metadata)}
       end)
+
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
 
       perform_job(MediaDownloadWorker, %{id: media_item.id})
       media_item = Repo.reload(media_item)
@@ -152,7 +158,7 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
 
     test "does not set redownloaded_at by default", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl ->
+      expect(YtDlpRunnerMock, :run, 2, fn _url, _opts, _ot, _addl ->
         {:ok, render_metadata(:media_metadata)}
       end)
 
@@ -162,31 +168,19 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
       assert media_item.media_redownloaded_at == nil
     end
 
-    test "calls the user script runner", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl ->
-        {:ok, render_metadata(:media_metadata)}
-      end)
-
-      expect(UserScriptRunnerMock, :run, fn :media_downloaded, data ->
-        assert data.id == media_item.id
-
-        :ok
-      end)
-
-      perform_job(MediaDownloadWorker, %{id: media_item.id})
-    end
-
     test "does not blow up if the record doesn't exist" do
       assert :ok = perform_job(MediaDownloadWorker, %{id: 0})
     end
 
     test "sets the no_force_overwrites runner option", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, fn _url, opts, _ot, _addl ->
+      expect(YtDlpRunnerMock, :run, 1, fn _url, opts, _ot, _addl ->
         assert :no_force_overwrites in opts
         refute :force_overwrites in opts
 
         {:ok, render_metadata(:media_metadata)}
       end)
+
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
 
       perform_job(MediaDownloadWorker, %{id: media_item.id})
     end
@@ -203,12 +197,14 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
 
     test "sets force_overwrites runner option", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, fn _url, opts, _ot, _addl ->
+      expect(YtDlpRunnerMock, :run, 1, fn _url, opts, _ot, _addl ->
         assert :force_overwrites in opts
         refute :no_force_overwrites in opts
 
         {:ok, render_metadata(:media_metadata)}
       end)
+
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
 
       perform_job(MediaDownloadWorker, %{id: media_item.id, force: true})
     end
@@ -216,9 +212,11 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
 
   describe "perform/1 when testing re-downloads" do
     test "sets redownloaded_at on the media_item", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl ->
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl ->
         {:ok, render_metadata(:media_metadata)}
       end)
+
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
 
       perform_job(MediaDownloadWorker, %{id: media_item.id, quality_upgrade?: true})
       media_item = Repo.reload(media_item)
@@ -227,14 +225,91 @@ defmodule Pinchflat.Downloading.MediaDownloadWorkerTest do
     end
 
     test "sets force_overwrites runner option", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, fn _url, opts, _ot, _addl ->
+      expect(YtDlpRunnerMock, :run, 1, fn _url, opts, _ot, _addl ->
         assert :force_overwrites in opts
         refute :no_force_overwrites in opts
 
         {:ok, render_metadata(:media_metadata)}
       end)
 
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
+
       perform_job(MediaDownloadWorker, %{id: media_item.id, force: true})
+    end
+
+    test "deletes old files if the media item has been updated" do
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl ->
+        tmp_media_item = media_item_with_attachments()
+        metadata = render_parsed_metadata(:media_metadata)
+        metadata = Map.put(metadata, "filepath", tmp_media_item.media_filepath)
+
+        {:ok, Phoenix.json_library().encode!(metadata)}
+      end)
+
+      expect(YtDlpRunnerMock, :run, 1, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
+
+      old_media_item = media_item_with_attachments()
+      perform_job(MediaDownloadWorker, %{id: old_media_item.id, force: true})
+      updated_media_item = Repo.reload(old_media_item)
+
+      assert updated_media_item.media_filepath != old_media_item.media_filepath
+      refute File.exists?(old_media_item.media_filepath)
+      assert File.exists?(updated_media_item.media_filepath)
+    end
+  end
+
+  describe "perform/1 when testing user script callbacks" do
+    setup do
+      stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl ->
+        {:ok, render_metadata(:media_metadata)}
+      end)
+
+      :ok
+    end
+
+    test "calls the media_pre_download user script runner", %{media_item: media_item} do
+      expect(UserScriptRunnerMock, :run, fn :media_pre_download, data ->
+        assert data.id == media_item.id
+
+        {:ok, "", 0}
+      end)
+
+      expect(UserScriptRunnerMock, :run, fn :media_downloaded, _ -> {:ok, "", 0} end)
+
+      perform_job(MediaDownloadWorker, %{id: media_item.id})
+    end
+
+    test "does not download the media if the pre-download script returns an error", %{media_item: media_item} do
+      expect(UserScriptRunnerMock, :run, fn :media_pre_download, _ -> {:ok, "", 1} end)
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id})
+      media_item = Repo.reload!(media_item)
+
+      refute media_item.media_filepath
+      assert media_item.prevent_download
+    end
+
+    test "downloads media if the pre-download script is not present", %{media_item: media_item} do
+      expect(UserScriptRunnerMock, :run, fn :media_pre_download, _ -> {:ok, :no_executable} end)
+      expect(UserScriptRunnerMock, :run, fn :media_downloaded, _ -> {:ok, :no_executable} end)
+
+      assert :ok = perform_job(MediaDownloadWorker, %{id: media_item.id})
+      media_item = Repo.reload!(media_item)
+
+      assert media_item.media_filepath
+      refute media_item.prevent_download
+    end
+
+    test "calls the media_downloaded user script runner", %{media_item: media_item} do
+      expect(UserScriptRunnerMock, :run, fn :media_pre_download, _ -> {:ok, "", 0} end)
+
+      expect(UserScriptRunnerMock, :run, fn :media_downloaded, data ->
+        assert data.id == media_item.id
+
+        {:ok, "", 0}
+      end)
+
+      perform_job(MediaDownloadWorker, %{id: media_item.id})
     end
   end
 end

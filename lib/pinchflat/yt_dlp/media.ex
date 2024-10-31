@@ -22,7 +22,8 @@ defmodule Pinchflat.YtDlp.Media do
     :livestream,
     :short_form_content,
     :uploaded_at,
-    :duration_seconds
+    :duration_seconds,
+    :playlist_index
   ]
 
   alias __MODULE__
@@ -36,9 +37,9 @@ defmodule Pinchflat.YtDlp.Media do
   Returns {:ok, map()} | {:error, any, ...}.
   """
   def download(url, command_opts \\ [], addl_opts \\ []) do
-    opts = [:no_simulate] ++ command_opts
+    all_command_opts = [:no_simulate] ++ command_opts
 
-    with {:ok, output} <- backend_runner().run(url, opts, "after_move:%()j", addl_opts),
+    with {:ok, output} <- backend_runner().run(url, all_command_opts, "after_move:%()j", addl_opts),
          {:ok, parsed_json} <- Phoenix.json_library().decode(output) do
       {:ok, parsed_json}
     else
@@ -52,25 +53,25 @@ defmodule Pinchflat.YtDlp.Media do
 
   Returns {:ok, ""} | {:error, any, ...}.
   """
-  def download_thumbnail(url, command_opts \\ []) do
-    opts = [:no_simulate, :skip_download, :write_thumbnail, convert_thumbnail: "jpg"] ++ command_opts
+  def download_thumbnail(url, command_opts \\ [], addl_opts \\ []) do
+    all_command_opts = [:no_simulate, :skip_download, :write_thumbnail, convert_thumbnail: "jpg"] ++ command_opts
 
     # NOTE: it doesn't seem like this command actually returns anything in `after_move` since
     # we aren't downloading the main media file
-    backend_runner().run(url, opts, "after_move:%()j")
+    backend_runner().run(url, all_command_opts, "after_move:%()j", addl_opts)
   end
 
   @doc """
   Returns a map representing the media at the given URL.
 
-  Returns {:ok, [map()]} | {:error, any, ...}.
+  Returns {:ok, %Media{}} | {:error, any, ...}.
   """
-  def get_media_attributes(url) do
+  def get_media_attributes(url, addl_opts \\ []) do
     runner = Application.get_env(:pinchflat, :yt_dlp_runner)
     command_opts = [:simulate, :skip_download]
     output_template = indexing_output_template()
 
-    case runner.run(url, command_opts, output_template) do
+    case runner.run(url, command_opts, output_template, addl_opts) do
       {:ok, output} ->
         output
         |> Phoenix.json_library().decode!()
@@ -84,9 +85,13 @@ defmodule Pinchflat.YtDlp.Media do
 
   @doc """
   Returns the output template for yt-dlp's indexing command.
+
+  NOTE: playlist_index is really only useful for playlists that will never change their order.
+  NOTE: I've switched back to `original_url` (from `webpage_url`) since it's started indicating
+        if something is a short via the URL again
   """
   def indexing_output_template do
-    "%(.{id,title,was_live,webpage_url,description,aspect_ratio,duration,upload_date,timestamp})j"
+    "%(.{id,title,live_status,original_url,description,aspect_ratio,duration,upload_date,timestamp,playlist_index})j"
   end
 
   @doc """
@@ -100,16 +105,17 @@ defmodule Pinchflat.YtDlp.Media do
       media_id: response["id"],
       title: response["title"],
       description: response["description"],
-      original_url: response["webpage_url"],
-      livestream: !!response["was_live"],
+      original_url: response["original_url"],
+      livestream: !!response["live_status"] && response["live_status"] != "not_live",
       duration_seconds: response["duration"] && round(response["duration"]),
-      short_form_content: response["webpage_url"] && short_form_content?(response),
-      uploaded_at: response["upload_date"] && parse_uploaded_at(response)
+      short_form_content: response["original_url"] && short_form_content?(response),
+      uploaded_at: response["upload_date"] && parse_uploaded_at(response),
+      playlist_index: response["playlist_index"] || 0
     }
   end
 
   defp short_form_content?(response) do
-    if String.contains?(response["webpage_url"], "/shorts/") do
+    if String.contains?(response["original_url"], "/shorts/") do
       true
     else
       # Sometimes shorts are returned without /shorts/ in the URL,
@@ -120,7 +126,7 @@ defmodule Pinchflat.YtDlp.Media do
       #
       # These don't fail if duration or aspect_ratio are missing
       # due to Elixir's comparison semantics
-      response["duration"] <= 60 && response["aspect_ratio"] < 0.8
+      response["duration"] <= 60 && response["aspect_ratio"] <= 0.85
     end
   end
 

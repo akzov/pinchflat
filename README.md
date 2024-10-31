@@ -17,6 +17,7 @@
 [![](https://img.shields.io/github/license/kieraneglin/pinchflat?style=for-the-badge&color=ee512b)](LICENSE)
 [![](https://img.shields.io/github/v/release/kieraneglin/pinchflat?style=for-the-badge)](https://github.com/kieraneglin/pinchflat/releases)
 [![](https://img.shields.io/github/actions/workflow/status/kieraneglin/pinchflat/lint_and_test.yml?style=for-the-badge)](#)
+[![](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode&style=for-the-badge)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/kieraneglin/pinchflat)
 
 </div>
 
@@ -52,7 +53,7 @@ If it doesn't work for your use case, please make a feature request! You can als
 - Self-contained - just one Docker container with no external dependencies
 - Powerful naming system so content is stored where and how you want it
 - Easy-to-use web interface with presets to get you started right away
-- First-class support for media center apps like Plex, Jellyfin, and Kodi
+- First-class support for media center apps like Plex, Jellyfin, and Kodi ([docs](https://github.com/kieraneglin/pinchflat/wiki/Frequently-Asked-Questions#how-do-i-get-media-into-plexjellyfinkodi))
 - Supports serving RSS feeds to your favourite podcast app ([docs](https://github.com/kieraneglin/pinchflat/wiki/Podcast-RSS-Feeds))
 - Automatically downloads new content from channels and playlists
   - Uses a novel approach to download new content more quickly than other apps
@@ -62,7 +63,7 @@ If it doesn't work for your use case, please make a feature request! You can als
 - Allows automatically redownloading new media after a set period
   - This can help improve the download quality of new content or improve SponsorBlock tags
 - Optionally automatically delete old content ([docs](https://github.com/kieraneglin/pinchflat/wiki/Automatically-Delete-Media))
-- Advanced options like setting cutoff dates and filtering by title
+- Advanced options like setting cutoff dates and filtering by title ([docs](https://github.com/kieraneglin/pinchflat/wiki/Frequently-Asked-Questions#i-only-want-certain-videos-from-a-source---how-can-i-only-download-those))
 - Reliable hands-off operation
 - Can pass cookies to YouTube to download your private playlists ([docs](https://github.com/kieraneglin/pinchflat/wiki/YouTube-Cookies))
 - Sponsorblock integration
@@ -130,9 +131,6 @@ You _must_ ensure the host directories you've mounted are writable by the user r
 > [!IMPORTANT]
 > It's not recommended to run the container as root. Doing so can create permission issues if other apps need to work with the downloaded media.
 
-> [!TIP]
-> If you need to run any command as root, you can run `su` from the container's shell as there is no password set for the root user.
-
 ### ADVANCED: Storing Pinchflat config directory on a network share
 
 As pointed out in [#137](https://github.com/kieraneglin/pinchflat/issues/137), SQLite doesn't like being run in WAL mode on network shares. If you're running Pinchflat on a network share, you can disable WAL mode by setting the `JOURNAL_MODE` environment variable to `delete`. This will make Pinchflat run in rollback journal mode which is less performant but should work on network shares.
@@ -144,16 +142,18 @@ If you change this setting and it works well for you, please leave a comment on 
 
 ### Environment variables
 
-| Name                  | Required? | Default                   | Notes                                                                                          |
-| --------------------- | --------- | ------------------------- | ---------------------------------------------------------------------------------------------- |
-| TZ                    | No        | `UTC`                     | Must follow IANA TZ format                                                                     |
-| LOG_LEVEL             | No        | `debug`                   | Can be set to `info`                                                                           |
-| BASIC_AUTH_USERNAME   | No        |                           | See [authentication docs](https://github.com/kieraneglin/pinchflat/wiki/Username-and-Password) |
-| BASIC_AUTH_PASSWORD   | No        |                           | See [authentication docs](https://github.com/kieraneglin/pinchflat/wiki/Username-and-Password) |
-| EXPOSE_FEED_ENDPOINTS | No        |                           | See [RSS feed docs](https://github.com/kieraneglin/pinchflat/wiki/Podcast-RSS-Feeds)           |
-| JOURNAL_MODE          | No        | `wal`                     | Set to `delete` if your config directory is stored on a network share (not recommended)        |
-| TZ_DATA_DIR           | No        | `/etc/elixir_tzdata_data` | The container path where the timezone database is stored                                       |
-| BASE_ROUTE_PATH       | No        | `/`                       | The base path for route generation. Useful when running behind certain reverse proxies         |
+| Name                        | Required? | Default                   | Notes                                                                                                                           |
+| --------------------------- | --------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `TZ`                        | No        | `UTC`                     | Must follow IANA TZ format                                                                                                      |
+| `LOG_LEVEL`                 | No        | `debug`                   | Can be set to `info` but `debug` is strongly recommended                                                                        |
+| `BASIC_AUTH_USERNAME`       | No        |                           | See [authentication docs](https://github.com/kieraneglin/pinchflat/wiki/Username-and-Password)                                  |
+| `BASIC_AUTH_PASSWORD`       | No        |                           | See [authentication docs](https://github.com/kieraneglin/pinchflat/wiki/Username-and-Password)                                  |
+| `EXPOSE_FEED_ENDPOINTS`     | No        | `false`                   | See [RSS feed docs](https://github.com/kieraneglin/pinchflat/wiki/Podcast-RSS-Feeds)                                            |
+| `ENABLE_IPV6`               | No        | `false`                   | Setting to _any_ non-blank value will enable IPv6                                                                               |
+| `JOURNAL_MODE`              | No        | `wal`                     | Set to `delete` if your config directory is stored on a network share (not recommended)                                         |
+| `TZ_DATA_DIR`               | No        | `/etc/elixir_tzdata_data` | The container path where the timezone database is stored                                                                        |
+| `BASE_ROUTE_PATH`           | No        | `/`                       | The base path for route generation. Useful when running behind certain reverse proxies, but prefix must be stripped.            |
+| `YT_DLP_WORKER_CONCURRENCY` | No        | `2`                       | The number of concurrent workers that use `yt-dlp` _per queue_. Set to 1 if you're getting IP limited, otherwise don't touch it |
 
 ## EFF donations
 
@@ -161,9 +161,9 @@ Prior to 2024-05-10, a portion of all donations were given to the [Electronic Fr
 
 The EFF defends your online liberties and [backed](https://github.com/github/dmca/blob/9a85e0f021f7967af80e186b890776a50443f06c/2020/11/2020-11-16-RIAA-reversal-effletter.pdf) `youtube-dl` when Google took them down.
 
-## Pre-release disclaimer
+## Stability disclaimer
 
-This is pre-release software and anything can break at any time. I make not guarantees about the stability of this software, forward-compatibility of updates, or integrity (both related to and independent of Pinchflat). Essentially, use at your own risk and expect there will be rough edges for now.
+This software is in active development and anything can break at any time. I make no guarantees about the stability of this software, forward-compatibility of updates, or integrity (both related to and independent of Pinchflat).
 
 ## License
 

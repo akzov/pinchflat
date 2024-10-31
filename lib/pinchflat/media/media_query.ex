@@ -33,7 +33,6 @@ defmodule Pinchflat.Media.MediaQuery do
   def downloaded, do: dynamic([mi], not is_nil(mi.media_filepath))
   def download_prevented, do: dynamic([mi], mi.prevent_download == true)
   def culling_prevented, do: dynamic([mi], mi.prevent_culling == true)
-  def culled, do: dynamic([mi], not is_nil(mi.culled_at))
   def redownloaded, do: dynamic([mi], not is_nil(mi.media_redownloaded_at))
   def upload_date_matches(other_date), do: dynamic([mi], fragment("date(?) = date(?)", mi.uploaded_at, ^other_date))
 
@@ -76,12 +75,20 @@ defmodule Pinchflat.Media.MediaQuery do
     )
   end
 
+  def meets_min_and_max_duration do
+    dynamic(
+      [mi, source],
+      (is_nil(source.min_duration_seconds) or fragment("duration_seconds >= ?", source.min_duration_seconds)) and
+        (is_nil(source.max_duration_seconds) or fragment("duration_seconds <= ?", source.max_duration_seconds))
+    )
+  end
+
   def past_retention_period do
     dynamic(
       [mi, source],
       fragment("""
         IFNULL(retention_period_days, 0) > 0 AND
-        DATETIME('now', '-' || retention_period_days || ' day') > media_downloaded_at
+        DATETIME(media_downloaded_at, '+' || retention_period_days || ' day') < DATETIME('now')
       """)
     )
   end
@@ -93,8 +100,8 @@ defmodule Pinchflat.Media.MediaQuery do
       # downloaded_at minus the redownload_delay_days is before the upload date
       fragment("""
         IFNULL(redownload_delay_days, 0) > 0 AND
-        DATETIME('now', '-' || redownload_delay_days || ' day') > uploaded_at AND
-        DATETIME(media_downloaded_at, '-' || redownload_delay_days || ' day') < uploaded_at
+        DATE('now', '-' || redownload_delay_days || ' day') > DATE(uploaded_at) AND
+        DATE(media_downloaded_at, '-' || redownload_delay_days || ' day') < DATE(uploaded_at)
       """)
     )
   end
@@ -108,6 +115,15 @@ defmodule Pinchflat.Media.MediaQuery do
     )
   end
 
+  def deletable_based_on_source_cutoff do
+    dynamic(
+      [mi, source],
+      ^downloaded() and
+        not (^upload_date_after_source_cutoff()) and
+        not (^culling_prevented())
+    )
+  end
+
   def pending do
     dynamic(
       [mi],
@@ -115,16 +131,16 @@ defmodule Pinchflat.Media.MediaQuery do
         not (^download_prevented()) and
         ^upload_date_after_source_cutoff() and
         ^format_matching_profile_preference() and
-        ^matches_source_title_regex()
+        ^matches_source_title_regex() and
+        ^meets_min_and_max_duration()
     )
   end
 
-  def redownloadable do
+  def upgradeable do
     dynamic(
       [mi, source],
       ^downloaded() and
         not (^download_prevented()) and
-        not (^culled()) and
         not (^redownloaded()) and
         ^past_redownload_delay()
     )

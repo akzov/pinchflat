@@ -2,6 +2,7 @@
   :let={f}
   for={@changeset}
   action={@action}
+  method={@method}
   x-data="{ advancedMode: !!JSON.parse(localStorage.getItem('advancedMode')) }"
   x-init="$watch('advancedMode', value => localStorage.setItem('advancedMode', JSON.stringify(value)))"
 >
@@ -10,8 +11,8 @@
   </.error>
 
   <section x-data="{ mediaProfileId: null }">
-    <section class="flex justify-between items-center mt-8">
-      <h3 class=" text-2xl text-black dark:text-white">
+    <section class="flex justify-between items-center mt-4">
+      <h3 class="text-2xl text-white">
         General Options
       </h3>
       <span class="cursor-pointer hover:underline" x-on:click="advancedMode = !advancedMode">
@@ -20,13 +21,19 @@
     </section>
 
     <.input
+      field={f[:original_url]}
+      type="text"
+      label="Source URL"
+      help="URL of a channel or playlist (required)"
+      x-init="$el.focus()"
+    />
+
+    <.input
       field={f[:custom_name]}
       type="text"
       label="Custom Name"
       help="Does not impact indexing or downloading. Will be inferred from the source if left blank"
     />
-
-    <.input field={f[:original_url]} type="text" label="Source URL" help="URL of a channel or playlist (required)" />
 
     <.input
       field={f[:media_profile_id]}
@@ -80,6 +87,31 @@
     />
 
     <.input
+      field={f[:use_cookies]}
+      type="toggle"
+      label="Use Cookies for Downloading"
+      help="Uses your YouTube cookies for this source (if configured). Used for downloading private playlists and videos. See docs for important details"
+    />
+
+    <section x-show="advancedMode">
+      <.input
+        field={f[:min_duration_seconds]}
+        type="number"
+        label="Minimum Duration (seconds)"
+        min="0"
+        help="Minimum duration of the media to be downloaded. Can be blank"
+      />
+
+      <.input
+        field={f[:max_duration_seconds]}
+        type="number"
+        label="Maximum Duration (seconds)"
+        min="0"
+        help="Maximum duration of the media to be downloaded. Can be blank"
+      />
+    </section>
+
+    <.input
       field={f[:download_cutoff_date]}
       type="text"
       label="Download Cutoff Date"
@@ -87,7 +119,7 @@
       maxlength="10"
       pattern="((?:19|20)[0-9][0-9])-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])"
       title="YYYY-MM-DD"
-      help="Only download media uploaded after this date. Leave blank to download all media. Must be in YYYY-MM-DD format"
+      help="Only download media uploaded after this date. Leave blank to download all media. Must be in YYYY-MM-DD format. Old media may be deleted or downloaded if you change this date"
     />
 
     <.input

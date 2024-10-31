@@ -180,11 +180,19 @@ defmodule Pinchflat.Sources do
   end
 
   defp add_source_details_to_changeset(source, changeset) do
-    case MediaCollection.get_source_details(changeset.changes.original_url) do
+    use_cookies = Ecto.Changeset.get_field(changeset, :use_cookies)
+
+    case MediaCollection.get_source_details(changeset.changes.original_url, [], use_cookies: use_cookies) do
       {:ok, source_details} ->
         add_source_details_by_collection_type(source, changeset, source_details)
 
-      {:error, runner_error, _status_code} ->
+      err ->
+        runner_error =
+          case err do
+            {:error, error_msg, _status_code} -> error_msg
+            {:error, error_msg} -> error_msg
+          end
+
         Ecto.Changeset.add_error(
           changeset,
           :original_url,

@@ -8,6 +8,8 @@ defmodule PinchflatWeb.Sources.SourceController do
   alias Pinchflat.Sources.Source
   alias Pinchflat.Media.MediaItem
   alias Pinchflat.Profiles.MediaProfile
+  alias Pinchflat.Media.FileSyncingWorker
+  alias Pinchflat.Sources.SourceDeletionWorker
   alias Pinchflat.Downloading.DownloadingHelpers
   alias Pinchflat.SlowIndexing.SlowIndexingHelpers
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
@@ -17,6 +19,7 @@ defmodule PinchflatWeb.Sources.SourceController do
       from s in Source,
         as: :source,
         inner_join: mp in assoc(s, :media_profile),
+        where: is_nil(s.marked_for_deletion_at) and is_nil(mp.marked_for_deletion_at),
         preload: [media_profile: mp],
         order_by: [asc: s.custom_name],
         select: map(s, ^Source.__schema__(:fields)),
@@ -41,13 +44,31 @@ defmodule PinchflatWeb.Sources.SourceController do
     render(conn, :index, sources: Repo.all(source_query))
   end
 
-  def new(conn, _params) do
-    changeset = Sources.change_source(%Source{})
+  def new(conn, params) do
+    # This lets me preload the settings from another source for more efficient creation
+    cs_struct =
+      case to_string(params["template_id"]) do
+        "" -> %Source{}
+        template_id -> Repo.get(Source, template_id) || %Source{}
+      end
 
     render(conn, :new,
-      changeset: changeset,
       media_profiles: media_profiles(),
-      layout: get_onboarding_layout()
+      layout: get_onboarding_layout(),
+      # Most of these don't actually _need_ to be nullified at this point,
+      # but if I don't do it now I know it'll bite me
+      changeset:
+        Sources.change_source(%Source{
+          cs_struct
+          | id: nil,
+            uuid: nil,
+            custom_name: nil,
+            description: nil,
+            collection_name: nil,
+            collection_id: nil,
+            collection_type: nil,
+            original_url: nil
+        })
     )
   end
 
@@ -107,19 +128,15 @@ defmodule PinchflatWeb.Sources.SourceController do
   end
 
   def delete(conn, %{"id" => id} = params) do
-    delete_files = Map.get(params, "delete_files", false)
+    # This awkward comparison converts the string to a boolean
+    delete_files = Map.get(params, "delete_files", "") == "true"
     source = Sources.get_source!(id)
-    {:ok, _source} = Sources.delete_source(source, delete_files: delete_files)
 
-    flash_message =
-      if delete_files do
-        "Source and files deleted successfully."
-      else
-        "Source deleted successfully. Files were not deleted."
-      end
+    {:ok, _} = Sources.update_source(source, %{marked_for_deletion_at: DateTime.utc_now()})
+    SourceDeletionWorker.kickoff(source, %{delete_files: delete_files})
 
     conn
-    |> put_flash(:info, flash_message)
+    |> put_flash(:info, "Source deletion started. This may take a while to complete.")
     |> redirect(to: ~p"/sources")
   end
 
@@ -156,6 +173,15 @@ defmodule PinchflatWeb.Sources.SourceController do
       id,
       "Metadata refresh enqueued.",
       &SourceMetadataStorageWorker.kickoff_with_task/1
+    )
+  end
+
+  def sync_files_on_disk(conn, %{"source_id" => id}) do
+    wrap_forced_action(
+      conn,
+      id,
+      "File sync enqueued.",
+      &FileSyncingWorker.kickoff_with_task/1
     )
   end
 

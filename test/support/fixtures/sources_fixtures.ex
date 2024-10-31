@@ -80,8 +80,8 @@ defmodule Pinchflat.SourcesFixtures do
       %{
         id: "video1",
         title: "Video 1",
-        webpage_url: "https://example.com/video1",
-        was_live: false,
+        original_url: "https://example.com/video1",
+        live_status: "not_live",
         description: "desc1",
         aspect_ratio: 1.67,
         duration: 12.34,
@@ -90,8 +90,8 @@ defmodule Pinchflat.SourcesFixtures do
       %{
         id: "video2",
         title: "Video 2",
-        webpage_url: "https://example.com/video2",
-        was_live: true,
+        original_url: "https://example.com/video2",
+        live_status: "is_live",
         description: "desc2",
         aspect_ratio: 1.67,
         duration: 345.67,
@@ -100,8 +100,8 @@ defmodule Pinchflat.SourcesFixtures do
       %{
         id: "video3",
         title: "Video 3",
-        webpage_url: "https://example.com/video3",
-        was_live: false,
+        original_url: "https://example.com/video3",
+        live_status: "not_live",
         description: "desc3",
         aspect_ratio: 1.0,
         duration: 678.90,

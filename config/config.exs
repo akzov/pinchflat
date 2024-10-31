@@ -41,7 +41,8 @@ config :pinchflat, PinchflatWeb.Endpoint,
   adapter: Phoenix.Endpoint.Cowboy2Adapter,
   render_errors: [
     formats: [html: PinchflatWeb.ErrorHTML, json: PinchflatWeb.ErrorJSON],
-    layout: false
+    root_layout: {PinchflatWeb.Layouts, :root},
+    layout: {PinchflatWeb.Layouts, :app}
   ],
   pubsub_server: Pinchflat.PubSub,
   live_view: [signing_salt: "/t5878kO"]
@@ -57,16 +58,6 @@ config :pinchflat, Oban,
        {"0 1 * * *", Pinchflat.Downloading.MediaRetentionWorker},
        {"0 2 * * *", Pinchflat.Downloading.MediaQualityUpgradeWorker}
      ]}
-  ],
-  # TODO: consider making this an env var or something?
-  queues: [
-    default: 10,
-    fast_indexing: 6,
-    media_indexing: 2,
-    media_collection_indexing: 2,
-    media_fetching: 2,
-    local_metadata: 8,
-    remote_metadata: 4
   ]
 
 # Configures the mailer
@@ -101,8 +92,8 @@ config :tailwind,
   ]
 
 # Configures Elixir's Logger
-config :logger, :console,
-  format: "$time $metadata[$level] $message\n",
+config :logger, :default_formatter,
+  format: "$date $time $metadata[$level] | $message\n",
   metadata: [:request_id]
 
 # Use Jason for JSON parsing in Phoenix

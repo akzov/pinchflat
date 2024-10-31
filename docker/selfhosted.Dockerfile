@@ -27,10 +27,10 @@ RUN apt-get update -y && \
     # Hex and Rebar
     mix local.hex --force && \
     mix local.rebar --force && \
-    # FFmpeg
+    # FFmpeg (latest build that doesn't cause an illegal instruction error for some users - see #347)
     export FFMPEG_DOWNLOAD=$(case ${TARGETPLATFORM:-linux/amd64} in \
-    "linux/amd64")   echo "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"   ;; \
-    "linux/arm64")   echo "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz" ;; \
+    "linux/amd64")   echo "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/autobuild-2024-07-30-14-10/ffmpeg-N-116468-g0e09f6d690-linux64-gpl.tar.xz"   ;; \
+    "linux/arm64")   echo "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/autobuild-2024-07-30-14-10/ffmpeg-N-116468-g0e09f6d690-linuxarm64-gpl.tar.xz" ;; \
     *)               echo ""        ;; esac) && \
     curl -L ${FFMPEG_DOWNLOAD} --output /tmp/ffmpeg.tar.xz && \
     tar -xf /tmp/ffmpeg.tar.xz --strip-components=2 --no-anchored -C /usr/local/bin/ "ffmpeg" && \
@@ -126,17 +126,6 @@ EXPOSE ${PORT}
 
 # Only copy the final release from the build stage
 COPY --from=builder /app/_build/${MIX_ENV}/rel/pinchflat ./
-
-# NEVER do this if you're running in an environment where you don't trust the user
-# (ie: most environments). This is only acceptable in a self-hosted environment.
-# The user could just run the whole container as root and bypass this anyway so
-# it's not a huge deal.
-# This removes the root password to allow users to assume root if needed. This is
-# preferrable to running the whole container as root so that the files/directories
-# created by the app aren't owned by root and are therefore easier for other users
-# and processes to interact with. If you want to just run the whole container as
-# root, use --user 0:0 or something.
-RUN passwd -d root
 
 HEALTHCHECK --interval=120s --start-period=10s \
   CMD curl --fail http://localhost:${PORT}/healthcheck || exit 1

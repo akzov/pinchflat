@@ -2,13 +2,24 @@ defmodule Pinchflat.Metadata.MetadataFileHelpersTest do
   use Pinchflat.DataCase
 
   import Pinchflat.MediaFixtures
+  import Pinchflat.SourcesFixtures
 
   alias Pinchflat.Metadata.MetadataFileHelpers, as: Helpers
 
   setup do
-    media_item = media_item_fixture()
+    media_item = Repo.preload(media_item_fixture(), :source)
 
     {:ok, %{media_item: media_item}}
+  end
+
+  describe "metadata_directory_for/1" do
+    test "returns the metadata directory for the given record", %{media_item: media_item} do
+      base_metadata_directory = Application.get_env(:pinchflat, :metadata_directory)
+
+      metadata_directory = Helpers.metadata_directory_for(media_item)
+
+      assert metadata_directory == Path.join([base_metadata_directory, "media_items", "#{media_item.id}"])
+    end
   end
 
   describe "compress_and_store_metadata_for/2" do
@@ -51,7 +62,7 @@ defmodule Pinchflat.Metadata.MetadataFileHelpersTest do
 
   describe "download_and_store_thumbnail_for/2" do
     test "returns the filepath", %{media_item: media_item} do
-      stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot -> {:ok, ""} end)
+      stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl -> {:ok, ""} end)
 
       filepath = Helpers.download_and_store_thumbnail_for(media_item)
 
@@ -59,7 +70,7 @@ defmodule Pinchflat.Metadata.MetadataFileHelpersTest do
     end
 
     test "calls yt-dlp with the expected options", %{media_item: media_item} do
-      expect(YtDlpRunnerMock, :run, fn url, opts, ot ->
+      expect(YtDlpRunnerMock, :run, fn url, opts, ot, _addl ->
         assert url == media_item.original_url
         assert ot == "after_move:%()j"
 
@@ -77,8 +88,32 @@ defmodule Pinchflat.Metadata.MetadataFileHelpersTest do
       Helpers.download_and_store_thumbnail_for(media_item)
     end
 
+    test "sets use_cookies if the source uses cookies" do
+      expect(YtDlpRunnerMock, :run, fn _url, _opts, _ot, addl ->
+        assert {:use_cookies, true} in addl
+        {:ok, ""}
+      end)
+
+      source = source_fixture(%{use_cookies: true})
+      media_item = Repo.preload(media_item_fixture(%{source_id: source.id}), :source)
+
+      Helpers.download_and_store_thumbnail_for(media_item)
+    end
+
+    test "does not set use_cookies if the source does not use cookies" do
+      expect(YtDlpRunnerMock, :run, fn _url, _opts, _ot, addl ->
+        assert {:use_cookies, false} in addl
+        {:ok, ""}
+      end)
+
+      source = source_fixture(%{use_cookies: false})
+      media_item = Repo.preload(media_item_fixture(%{source_id: source.id}), :source)
+
+      Helpers.download_and_store_thumbnail_for(media_item)
+    end
+
     test "returns nil if yt-dlp fails", %{media_item: media_item} do
-      stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot -> {:error, "error"} end)
+      stub(YtDlpRunnerMock, :run, fn _url, _opts, _ot, _addl -> {:error, "error"} end)
 
       filepath = Helpers.download_and_store_thumbnail_for(media_item)
 
@@ -142,13 +177,20 @@ defmodule Pinchflat.Metadata.MetadataFileHelpersTest do
     end
   end
 
-  describe "metadata_directory_for/1" do
-    test "returns the metadata directory for the given record", %{media_item: media_item} do
-      base_metadata_directory = Application.get_env(:pinchflat, :metadata_directory)
+  describe "season_and_episode_from_media_filepath/1" do
+    test "returns a season and episode if one can be determined" do
+      assert {:ok, {"1", "2"}} = Helpers.season_and_episode_from_media_filepath("/foo/s1e2 - test.mp4")
+      assert {:ok, {"1", "2"}} = Helpers.season_and_episode_from_media_filepath("/foo/S1E2 - test.mp4")
+      assert {:ok, {"001", "002"}} = Helpers.season_and_episode_from_media_filepath("/foo/s001e002 - test.mp4")
+      assert {:ok, {"1", "2"}} = Helpers.season_and_episode_from_media_filepath("/foo/s1e2bar - test.mp4")
+      assert {:ok, {"1", "2"}} = Helpers.season_and_episode_from_media_filepath("/foo/bar s1e2 - test.mp4")
+    end
 
-      metadata_directory = Helpers.metadata_directory_for(media_item)
-
-      assert metadata_directory == Path.join([base_metadata_directory, "media_items", "#{media_item.id}"])
+    test "returns an error if a season and episode can't be determined" do
+      assert {:error, :indeterminable} = Helpers.season_and_episode_from_media_filepath("/foo/test.mp4")
+      assert {:error, :indeterminable} = Helpers.season_and_episode_from_media_filepath("/foo/s1 - test.mp4")
+      assert {:error, :indeterminable} = Helpers.season_and_episode_from_media_filepath("/foo/s1e - test.mp4")
+      assert {:error, :indeterminable} = Helpers.season_and_episode_from_media_filepath("/foo/s1etest.mp4")
     end
   end
 end

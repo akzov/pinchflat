@@ -40,6 +40,20 @@ config :pinchflat, Pinchflat.Repo,
     Path.join([:code.priv_dir(:pinchflat), "repo", "extensions", "sqlean-linux-#{system_arch}", "sqlean"])
   ]
 
+# Some users may want to increase the number of workers that use yt-dlp to improve speeds
+# Others may want to decrease the number of these workers to lessen the chance of an IP ban
+{yt_dlp_worker_count, _} = Integer.parse(System.get_env("YT_DLP_WORKER_CONCURRENCY", "2"))
+
+config :pinchflat, Oban,
+  queues: [
+    default: 10,
+    fast_indexing: 6,
+    media_collection_indexing: yt_dlp_worker_count,
+    media_fetching: yt_dlp_worker_count,
+    remote_metadata: yt_dlp_worker_count,
+    local_data: 8
+  ]
+
 if config_env() == :prod do
   config_path = "/config"
   db_path = System.get_env("DATABASE_PATH", Path.join([config_path, "db", "pinchflat.db"]))
@@ -52,6 +66,7 @@ if config_env() == :prod do
   journal_mode = String.to_existing_atom(System.get_env("JOURNAL_MODE", "wal"))
   # For running PF in a subdirectory via a reverse proxy
   base_route_path = System.get_env("BASE_ROUTE_PATH", "/")
+  enable_ipv6 = String.length(System.get_env("ENABLE_IPV6", "")) > 0
 
   config :logger, level: String.to_existing_atom(System.get_env("LOG_LEVEL", "debug"))
 
@@ -64,11 +79,12 @@ if config_env() == :prod do
     tmpfile_directory: Path.join([System.tmp_dir!(), "pinchflat", "data"]),
     dns_cluster_query: System.get_env("DNS_CLUSTER_QUERY"),
     expose_feed_endpoints: expose_feed_endpoints,
-    timezone: System.get_env("TIMEZONE") || System.get_env("TZ") || "UTC",
+    # This is configured in application.ex
+    timezone: "UTC",
     log_path: log_path,
     base_route_path: base_route_path
 
-  config :tzdata, :data_dir, System.get_env("TZ_DATA_DIR", "/etc/elixir_tzdata_data")
+  config :tzdata, :data_dir, System.get_env("TZ_DATA_DIR", "/config/extras/elixir_tz_data")
 
   config :pinchflat, Pinchflat.Repo,
     database: db_path,
@@ -106,7 +122,7 @@ if config_env() == :prod do
       # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
       # See the documentation on https://hexdocs.pm/plug_cowboy/Plug.Cowboy.html
       # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0},
+      ip: if(enable_ipv6, do: {0, 0, 0, 0, 0, 0, 0, 0}, else: {0, 0, 0, 0}),
       port: String.to_integer(System.get_env("PORT") || "4000")
     ],
     url: [path: base_route_path],

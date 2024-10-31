@@ -7,6 +7,8 @@ defmodule PinchflatWeb.SourceControllerTest do
 
   alias Pinchflat.Repo
   alias Pinchflat.Settings
+  alias Pinchflat.Media.FileSyncingWorker
+  alias Pinchflat.Sources.SourceDeletionWorker
   alias Pinchflat.Downloading.MediaDownloadWorker
   alias Pinchflat.Metadata.SourceMetadataStorageWorker
   alias Pinchflat.SlowIndexing.MediaCollectionIndexingWorker
@@ -33,8 +35,26 @@ defmodule PinchflatWeb.SourceControllerTest do
 
   describe "index" do
     test "lists all sources", %{conn: conn} do
+      source = source_fixture()
       conn = get(conn, ~p"/sources")
+
       assert html_response(conn, 200) =~ "Sources"
+      assert html_response(conn, 200) =~ source.custom_name
+    end
+
+    test "omits sources that have marked_for_deletion_at set", %{conn: conn} do
+      source = source_fixture(marked_for_deletion_at: DateTime.utc_now())
+      conn = get(conn, ~p"/sources")
+
+      refute html_response(conn, 200) =~ source.custom_name
+    end
+
+    test "omits sources who's media profile has marked_for_deletion_at set", %{conn: conn} do
+      media_profile = media_profile_fixture(marked_for_deletion_at: DateTime.utc_now())
+      source = source_fixture(media_profile_id: media_profile.id)
+      conn = get(conn, ~p"/sources")
+
+      refute html_response(conn, 200) =~ source.custom_name
     end
   end
 
@@ -50,11 +70,20 @@ defmodule PinchflatWeb.SourceControllerTest do
 
       refute html_response(conn, 200) =~ "MENU"
     end
+
+    test "preloads some attributes when using a template", %{conn: conn} do
+      source = source_fixture(custom_name: "My first source", download_cutoff_date: "2021-01-01")
+
+      conn = get(conn, ~p"/sources/new", %{"template_id" => source.id})
+      assert html_response(conn, 200) =~ "New Source"
+      assert html_response(conn, 200) =~ "2021-01-01"
+      refute html_response(conn, 200) =~ source.custom_name
+    end
   end
 
   describe "create source" do
     test "redirects to show when data is valid", %{conn: conn, create_attrs: create_attrs} do
-      expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/3)
+      expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/4)
       conn = post(conn, ~p"/sources", source: create_attrs)
 
       assert %{id: id} = redirected_params(conn)
@@ -70,7 +99,7 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
 
     test "redirects to onboarding when onboarding", %{conn: conn, create_attrs: create_attrs} do
-      expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/3)
+      expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/4)
 
       Settings.set(onboarding: true)
       conn = post(conn, ~p"/sources", source: create_attrs)
@@ -99,7 +128,7 @@ defmodule PinchflatWeb.SourceControllerTest do
     setup [:create_source]
 
     test "redirects when data is valid", %{conn: conn, source: source, update_attrs: update_attrs} do
-      expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/3)
+      expect(YtDlpRunnerMock, :run, 1, &runner_function_mock/4)
 
       conn = put(conn, ~p"/sources/#{source}", source: update_attrs)
       assert redirected_to(conn) == ~p"/sources/#{source}"
@@ -118,51 +147,37 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
-  describe "delete source when just deleting the records" do
+  describe "delete source in all cases" do
     setup [:create_source]
-
-    test "deletes chosen source and media_items", %{conn: conn, source: source, media_item: media_item} do
-      delete(conn, ~p"/sources/#{source}")
-
-      assert_raise Ecto.NoResultsError, fn -> Repo.reload!(source) end
-      assert_raise Ecto.NoResultsError, fn -> Repo.reload!(media_item) end
-    end
 
     test "redirects to the sources page", %{conn: conn, source: source} do
       conn = delete(conn, ~p"/sources/#{source}")
       assert redirected_to(conn) == ~p"/sources"
     end
 
-    test "does not delete the files", %{conn: conn, source: source, media_item: media_item} do
+    test "sets marked_for_deletion_at", %{conn: conn, source: source} do
       delete(conn, ~p"/sources/#{source}")
-      assert File.exists?(media_item.media_filepath)
+      assert Repo.reload!(source).marked_for_deletion_at
+    end
+  end
+
+  describe "delete source when just deleting the records" do
+    setup [:create_source]
+
+    test "enqueues a job without the delete_files arg", %{conn: conn, source: source} do
+      delete(conn, ~p"/sources/#{source}")
+
+      assert [%{args: %{"delete_files" => false}}] = all_enqueued(worker: SourceDeletionWorker)
     end
   end
 
   describe "delete source when deleting the records and files" do
     setup [:create_source]
 
-    setup do
-      stub(UserScriptRunnerMock, :run, fn _event_type, _data -> :ok end)
-
-      :ok
-    end
-
-    test "deletes chosen source and media_items", %{conn: conn, source: source, media_item: media_item} do
+    test "enqueues a job without the delete_files arg", %{conn: conn, source: source} do
       delete(conn, ~p"/sources/#{source}?delete_files=true")
 
-      assert_raise Ecto.NoResultsError, fn -> Repo.reload!(source) end
-      assert_raise Ecto.NoResultsError, fn -> Repo.reload!(media_item) end
-    end
-
-    test "redirects to the sources page", %{conn: conn, source: source} do
-      conn = delete(conn, ~p"/sources/#{source}?delete_files=true")
-      assert redirected_to(conn) == ~p"/sources"
-    end
-
-    test "deletes the files", %{conn: conn, source: source, media_item: media_item} do
-      delete(conn, ~p"/sources/#{source}?delete_files=true")
-      refute File.exists?(media_item.media_filepath)
+      assert [%{args: %{"delete_files" => true}}] = all_enqueued(worker: SourceDeletionWorker)
     end
   end
 
@@ -254,6 +269,23 @@ defmodule PinchflatWeb.SourceControllerTest do
     end
   end
 
+  describe "sync_files_on_disk" do
+    test "forces a file sync", %{conn: conn} do
+      source = source_fixture()
+
+      assert [] = all_enqueued(worker: FileSyncingWorker)
+      post(conn, ~p"/sources/#{source.id}/sync_files_on_disk")
+      assert [_] = all_enqueued(worker: FileSyncingWorker)
+    end
+
+    test "redirects to the source page", %{conn: conn} do
+      source = source_fixture()
+
+      conn = post(conn, ~p"/sources/#{source.id}/sync_files_on_disk")
+      assert redirected_to(conn) == ~p"/sources/#{source.id}"
+    end
+  end
+
   defp create_source(_) do
     source = source_fixture()
     media_item = media_item_with_attachments(%{source_id: source.id})
@@ -261,7 +293,7 @@ defmodule PinchflatWeb.SourceControllerTest do
     %{source: source, media_item: media_item}
   end
 
-  defp runner_function_mock(_url, _opts, _ot) do
+  defp runner_function_mock(_url, _opts, _ot, _addl) do
     {
       :ok,
       Phoenix.json_library().encode!(%{
